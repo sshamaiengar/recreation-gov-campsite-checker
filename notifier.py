@@ -5,6 +5,7 @@ import sys
 import time
 from hashlib import md5
 from os import isatty
+import logging
 
 import twitter
 
@@ -12,8 +13,17 @@ from enums.emoji import Emoji
 
 MAX_TWEET_LENGTH = 279
 DELAY_FILE_TEMPLATE = "next_{}.txt"
-DELAY_TIME = 1800
+DELAY_TIME = 600
 CREDENTIALS_FILE = "twitter_credentials.json"
+LAST_TWEET_FILE = "last_tweet.txt"
+
+LOG = logging.getLogger(__name__)
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(process)s - %(levelname)s - %(message)s"
+)
+sh = logging.StreamHandler()
+sh.setFormatter(log_formatter)
+LOG.addHandler(sh)
 
 
 def _create_tweet(tweet, tc):
@@ -55,7 +65,7 @@ def main(args, stdin):
     if call_time + random.randint(DELAY_TIME - 30, DELAY_TIME + 30) > int(
         time.time()
     ):
-        print("It is too soon to tweet again")
+        LOG.warn("It is too soon to tweet again")
         sys.exit(0)
 
     if "Something went wrong" in first_line:
@@ -66,12 +76,29 @@ def main(args, stdin):
 
     if available_site_strings:
         tweet = generate_tweet_str(available_site_strings, first_line, user)
-        _create_tweet(tweet, tc)
-        with open(delay_file, "w") as f:
-            f.write(str(int(time.time())))
-        sys.exit(0)
+        last_tweet = ""
+
+        try:
+            with open(LAST_TWEET_FILE, "r") as f:
+                last_tweet = f.read()
+        except FileNotFoundError:
+            pass
+
+        # check last tweet contents. if the same, then don't tweet again.
+        # otherwise, tweet and save the text again
+        if tweet == last_tweet:
+            LOG.warn("No change in available campsites, not tweeting")
+            sys.exit(0)
+        else:
+            LOG.info("Tweet: \n" + tweet)
+            # _create_tweet(tweet, tc)
+            # with open(delay_file, "w") as f:
+            #     f.write(str(int(time.time())))
+            with open(LAST_TWEET_FILE, "w+") as f:
+                f.write(tweet)
+            sys.exit(0)
     else:
-        print("No campsites available, not tweeting 😞")
+        LOG.warn("No campsites available, not tweeting 😞")
         sys.exit(1)
 
 
@@ -80,23 +107,39 @@ def generate_tweet_str(available_site_strings, first_line, user):
     tweet += first_line.rstrip()
     tweet += " 🏕🏕🏕\n"
     tweet += "\n".join(available_site_strings)
-    tweet += "\n" + "🏕" * random.randint(5, 20)  # To avoid duplicate tweets.
+    tweet += "\nGo to recreation.gov/camping/campsites/<site#> to reserve."
     return tweet
 
 
 def generate_availability_strings(stdin):
     available_site_strings = []
+    copy_campsite_availability_lines = False
     for line in stdin:
-        line = line.strip()
         if Emoji.SUCCESS.value in line:
+            line = line.strip() 
             park_name_and_id = " ".join(line.split(":")[0].split(" ")[1:])
             num_available = line.split(":")[1][1].split(" ")[0]
             s = "{} site(s) available in {}".format(
                 num_available, park_name_and_id
             )
             available_site_strings.append(s)
+            copy_campsite_availability_lines = True
+            # get specific site availability from following lines that start with *
+        elif copy_campsite_availability_lines:
+            # if previous line was SUCCESS, then copy following lines that start with *
+            # for specific campsite availability and dates
+            if line.strip().startswith("*"):
+                available_site_strings.append(line.rstrip())
+            else:
+                copy_campsite_availability_lines = False
     return available_site_strings
 
 
 if __name__ == "__main__":
+    LOG.setLevel(logging.DEBUG)
     main(sys.argv, sys.stdin)
+
+"""
+Usage:
+python3 camping.py --start-date 2023-07-21 --end-date 2023-08-30 --stdin < parks.txt --weekends-only --nights 2 --show-campsite-info | python3 notifier.py @sshamaiengar
+"""

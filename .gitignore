@@ -1,4 +1,4 @@
-/myvenv/
+myenv/*
 __pycache__
 /next*
 /tweetlog
@@ -6,3 +6,4 @@ __pycache__
 /twitter_credentials.json
 *.swp
 *egg-info
+.vscode/*

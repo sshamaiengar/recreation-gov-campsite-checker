@@ -7,6 +7,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 from itertools import count, groupby
+import time
 
 from dateutil import rrule
 
@@ -59,7 +60,9 @@ def get_park_information(
     # Get data for each month.
     api_data = []
     for month_date in months:
-        api_data.append(RecreationClient.get_availability(park_id, month_date))
+        month_data = RecreationClient.get_availability(park_id, month_date)
+        if month_data:
+            api_data.append(month_data)
 
     # Collapse the data into the described output format.
     # Filter by campsite_type if necessary.
@@ -69,18 +72,33 @@ def get_park_information(
         for campsite_id, campsite_data in month_data["campsites"].items():
             if campsite_id in excluded_site_ids:
                 continue
+            # Filter out sites that don't accept enough people
+            if ("max_num_people" in campsite_data and campsite_data["max_num_people"] < 2):
+                LOG.warning(f"Skipping site {campsite_id}, accepts {campsite_data['max_num_people']} people max")
+                continue
+
+            # Filter out sites that are day use only
+            if ("type_of_use" in campsite_data and campsite_data["type_of_use"].lower() != "overnight"):
+                LOG.warning(f"Skipping site {campsite_id}, use type is {campsite_data['type_of_use']}")
+                continue
+
+            # Filter out group, walk-in, and management sites, and other types that don't match requested
+            if (
+                campsite_type
+                and (campsite_type != campsite_data["campsite_type"]
+                        or "group" in campsite_data["campsite_type"].lower()
+                        or "management" in campsite_data["campsite_type"].lower()
+                        or "walk" in campsite_data["campsite_type"].lower())
+            ):
+                LOG.warning(f"Skipping site {campsite_id}, type is {campsite_data['campsite_type']}")
+                continue
+
             available = []
             a = data.setdefault(campsite_id, [])
             for date, availability_value in campsite_data[
                 "availabilities"
             ].items():
                 if availability_value != "Available":
-                    continue
-
-                if (
-                    campsite_type
-                    and campsite_type != campsite_data["campsite_type"]
-                ):
                     continue
 
                 if (
@@ -250,7 +268,7 @@ def generate_human_output(
     if has_availabilities:
         out.insert(
             0,
-            "there are campsites available from {start} to {end}!!!".format(
+            "There are campsites available from {start} to {end}!!!\nGo to https://www.recreation.gov/camping/campsites/<siteNumber> to reserve".format(
                 start=start_date.strftime(DateFormat.INPUT_DATE_FORMAT.value),
                 end=end_date.strftime(DateFormat.INPUT_DATE_FORMAT.value),
             ),
@@ -285,6 +303,21 @@ def remove_comments(lines: list[str]) -> list[str]:
 
     return new_lines
 
+"""
+Change start date to at least today's date
+Change end date to be at least 1 month from start date
+"""
+def validate_dates(start_date : datetime, end_date: datetime):
+    current_date = datetime.today()
+
+    if start_date < current_date:
+        start_date = current_date
+    
+    if end_date <= start_date:
+        end_date = start_date + timedelta(days=30)
+
+    return (start_date, end_date)
+
 
 def main(parks, json_output=False):
     excluded_site_ids = []
@@ -295,12 +328,14 @@ def main(parks, json_output=False):
             excluded_site_ids = [l.strip() for l in excluded_site_ids]
             excluded_site_ids = remove_comments(excluded_site_ids)
 
+    validated_start_date, validated_end_date = validate_dates(args.start_date, args.end_date)
+
     info_by_park_id = {}
     for park_id in parks:
         info_by_park_id[park_id] = check_park(
             park_id,
-            args.start_date,
-            args.end_date,
+            validated_start_date,
+            validated_end_date,
             args.campsite_type,
             args.campsite_ids,
             nights=args.nights,
@@ -313,8 +348,8 @@ def main(parks, json_output=False):
     else:
         output, has_availabilities = generate_human_output(
             info_by_park_id,
-            args.start_date,
-            args.end_date,
+            validated_start_date,
+            validated_end_date,
             args.show_campsite_info,
         )
     print(output)
@@ -322,6 +357,7 @@ def main(parks, json_output=False):
 
 
 if __name__ == "__main__":
+    start = time.perf_counter()
     parser = CampingArgumentParser()
     args = parser.parse_args()
 
@@ -329,3 +365,10 @@ if __name__ == "__main__":
         LOG.setLevel(logging.DEBUG)
 
     main(args.parks, json_output=args.json_output)
+    end = time.perf_counter()
+    print(f"Found campsites in {end-start}s")
+
+"""
+Usage:
+python3 camping.py --start-date 2023-07-21 --end-date 2023-09-30 --stdin < parks.txt --weekends-only --nights 2 --show-campsite-info
+"""

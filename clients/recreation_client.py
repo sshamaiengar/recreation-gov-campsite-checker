@@ -1,11 +1,13 @@
 import logging
 
 import requests
-import user_agent 
+import user_agent
+import backoff
 
 from utils import formatter
 
 LOG = logging.getLogger(__name__)
+MAX_RETRIES = 5
 
 
 class RecreationClient:
@@ -25,7 +27,11 @@ class RecreationClient:
             "Querying for {} with these params: {}".format(park_id, params)
         )
         url = cls.AVAILABILITY_ENDPOINT.format(park_id=park_id)
-        resp = cls._send_request(url, params)
+        resp = None
+        try:
+            resp = cls._send_request(url, params)
+        except RuntimeError:
+            LOG.debug("GET request failed for 5 retries...returning no data")
         return resp
 
     @classmethod
@@ -36,9 +42,14 @@ class RecreationClient:
         return resp["campground"]["facility_name"]
 
     @classmethod
+    @backoff.on_exception(backoff.expo,
+                          RuntimeError,
+                          max_tries=5,
+                          jitter=None)
     def _send_request(cls, url, params):
         resp = requests.get(url, params=params, headers=cls.headers)
         if resp.status_code != 200:
+            LOG.debug("GET request failed")
             raise RuntimeError(
                 "failedRequest",
                 "ERROR, {status_code} code received from {url}: {resp_text}".format(
