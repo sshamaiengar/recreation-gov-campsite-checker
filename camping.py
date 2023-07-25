@@ -17,6 +17,8 @@ from enums.emoji import Emoji
 from utils import formatter
 from utils.camping_argparser import CampingArgumentParser
 
+EXCLUDED_DATES_FILE = "excluded_dates.txt"
+
 LOG = logging.getLogger(__name__)
 log_formatter = logging.Formatter(
     "%(asctime)s - %(process)s - %(levelname)s - %(message)s"
@@ -127,8 +129,21 @@ def get_num_available_sites(
     num_available = 0
     num_days = (end_date - start_date).days
     dates = [end_date - timedelta(days=i) for i in range(1, num_days + 1)]
+
+    # account for any excluded dates in excluded_dates.txt
+    excluded_dates = {}
+    try:
+        with open(EXCLUDED_DATES_FILE, "r") as f:
+            excluded_dates_strs = {l.strip() for l in f.read().split("\n")}
+            LOG.warning(f"Excluding results for the following dates: {', '.join(excluded_dates_strs)}")
+            # convert dates to %Y-%m-%d format to do comparison with exclusion set
+            dates = [d for d in dates if d.strftime(DateFormat.INPUT_DATE_FORMAT.value) not in excluded_dates_strs]
+    except FileNotFoundError:
+        pass
+
     if weekends_only:
         dates = filter(is_weekend, dates)
+
     dates = set(
         formatter.format_date(
             i, format_string=DateFormat.ISO_DATE_FORMAT_RESPONSE.value
