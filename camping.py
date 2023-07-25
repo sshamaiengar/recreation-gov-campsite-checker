@@ -135,9 +135,10 @@ def get_num_available_sites(
     try:
         with open(EXCLUDED_DATES_FILE, "r") as f:
             excluded_dates_strs = {l.strip() for l in f.read().split("\n")}
-            LOG.warning(f"Excluding results for the following dates: {', '.join(excluded_dates_strs)}")
-            # convert dates to %Y-%m-%d format to do comparison with exclusion set
-            dates = [d for d in dates if d.strftime(DateFormat.INPUT_DATE_FORMAT.value) not in excluded_dates_strs]
+            if excluded_dates_strs:
+                LOG.warning(f"Excluding results for the following dates: {', '.join(excluded_dates_strs)}")
+                # convert dates to %Y-%m-%d format to do comparison with exclusion set
+                dates = [d for d in dates if d.strftime(DateFormat.INPUT_DATE_FORMAT.value) not in excluded_dates_strs]
     except FileNotFoundError:
         pass
 

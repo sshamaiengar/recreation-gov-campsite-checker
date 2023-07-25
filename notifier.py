@@ -69,8 +69,7 @@ def send_email(text_contents):
 def _post_tweet(tweet, api):
     resp = api.create_tweet(text=tweet)
 
-    LOG.info("The following was tweeted: ")
-    LOG.info()
+    LOG.info("The following was tweeted:\n")
     LOG.info(tweet)
 
 """
@@ -101,7 +100,7 @@ def main(args, stdin):
 
     # Janky simple argument parsing:
     #   python3 notifier.py <usernameToNotify>
-    if len(args) <= 2:
+    if len(args) < 2:
         print("Please provide the user/email you want to tweet/email at!")
         sys.exit(1)
 
@@ -143,11 +142,11 @@ def main(args, stdin):
 
     last_availability = load_last_availability()
 
+    persist_availability(availability)
+
     if not has_new_availability(availability, last_availability):
         LOG.warning("No new campsites available, not notifying 😞")
         sys.exit(0)
-
-    persist_availability(availability)
 
     if available_site_strings:
         notification_str = generate_tweet_str(available_site_strings, first_line, user)
@@ -176,7 +175,6 @@ def generate_tweet_str(available_site_strings, first_line, user):
     tweet += "\nGo to recreation.gov/camping/campsites/<site#> to reserve."
     return tweet
 
-# TODO: condense availability into less characters
 def generate_availability_strings(stdin):
     available_site_strings = []
     copy_campsite_availability_lines = False
@@ -220,10 +218,15 @@ def generate_availability_strings_concise(availability_data):
     
 # Get availability data as park->site->[(start, end)] from list of input lines
 def get_availability_data(stdin):
+    # go through stdin to get all lines in a list
+    inputs = []
+    for l in stdin:
+        inputs.append(l)
+
     availability_by_park = {}
     i = 0
-    while i < len(stdin):
-        line = stdin[i]
+    while i < len(inputs):
+        line = inputs[i]
         print("--- " + line + " ---")
         if Emoji.SUCCESS.value in line:
             line = line.strip()
@@ -234,7 +237,7 @@ def get_availability_data(stdin):
             # get the availability dates for each site
             for c in range(num_available):
                 i += 1
-                line = stdin[i].strip()
+                line = inputs[i].strip()
                 try:
                     if "Site" in line:
                         # Get ID from: "* Site 10132102 is ...""
@@ -244,10 +247,10 @@ def get_availability_data(stdin):
                 except:
                     LOG.warning("Expected <Site #> in line <{line}>")
                 
-                while "->" in stdin[i+1]:
+                while "->" in inputs[i+1]:
                     try:
                         i += 1
-                        line = stdin[i].strip()
+                        line = inputs[i].strip()
                         # Get dates from "* 2023-08-04 -> 2023-08-06"
                         date1_str = line.split(" ")[1]
                         date2_str = line.split(" ")[3]
