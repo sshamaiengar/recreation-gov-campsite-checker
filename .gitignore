@@ -7,3 +7,5 @@ __pycache__
 *.swp
 *egg-info
 .vscode/*
+last_availability_data.txt
+last_notification.txt
