@@ -19,7 +19,6 @@ MAX_TWEET_LENGTH = 279
 DELAY_FILE_TEMPLATE = "next_{}.txt"
 DELAY_TIME = 600
 CREDENTIALS_FILE = "twitter_credentials.json"
-LAST_NOTIFICATION_FILE = "last_notification.txt"
 LAST_AVAILABILITY_FILE = "last_availability_data.txt"
 
 class NotificationMethod:
@@ -152,33 +151,18 @@ def main(args, stdin):
 
     if available_site_strings:
         notification_str = generate_tweet_str(available_site_strings, first_line, user)
-        last_notification_str = ""
 
-        try:
-            with open(LAST_NOTIFICATION_FILE, "r") as f:
-                last_notification_str = f.read()
-        except FileNotFoundError:
-            pass
+        LOG.info("Notification (ignoring char limit): \n" + notification_str)
 
-        # check last noticiation contents. if the same, then don't notify again.
-        # otherwise, notify and save the text again
-        if notification_str == last_notification_str:
-            LOG.warning("No change in available campsites, not notifying")
-            sys.exit(0)
+        if notification_method == NotificationMethod.TWITTER:
+            _create_tweet(notification_str, tc)
         else:
-            LOG.info("Notification (ignoring char limit): \n" + notification_str)
+            send_email(notification_str)
 
-            if notification_method == NotificationMethod.TWITTER:
-                _create_tweet(notification_str, tc)
-            else:
-                send_email(notification_str)
+        with open(delay_file, "w") as f:
+            f.write(str(int(time.time())))
 
-            with open(delay_file, "w") as f:
-                f.write(str(int(time.time())))
-
-            with open(LAST_NOTIFICATION_FILE, "w+") as f:
-                f.write(notification_str)
-            sys.exit(0)
+        sys.exit(0)
     else:
         LOG.warning("No campsites available, not notifying 😞")
         sys.exit(1)
