@@ -9,7 +9,7 @@ import glob
 import logging
 from enum import Enum
 from datetime import datetime, timedelta
-from pytwitter import Api
+from pytwitter import Api, PyTwitterError
 import backoff
 import yagmail
 
@@ -22,7 +22,7 @@ DELAY_TIME = 120
 CREDENTIALS_FILE = "twitter_credentials.json"
 LAST_AVAILABILITY_FILE_PREFIX = "last_availability_data_"
 LAST_AVAILABILITY_FILE_SUFFIX = ".txt"
-LAST_AVAILABILITY_DATA_TTL = timedelta(hours=1)
+LAST_AVAILABILITY_DATA_TTL = timedelta(minutes=1)
 
 class NotificationMethod:
     TWITTER = 1
@@ -75,16 +75,23 @@ def send_email(text_contents):
 
 def _post_tweet(tweet, api: Api, reply_tweet_id=None):
     resp = None
-    if not reply_tweet_id:
-        resp = api.create_tweet(text=tweet)
-    else:
-        resp = api.create_tweet(text=tweet,
-                            reply_in_reply_to_tweet_id=reply_tweet_id,
-                            reply_exclude_reply_user_ids=[])
+    try:
+        if not reply_tweet_id:
+            resp = api.create_tweet(text=tweet)
+        else:
+            resp = api.create_tweet(text=tweet,
+                                reply_in_reply_to_tweet_id=reply_tweet_id,
+                                reply_exclude_reply_user_ids=[])
+    except PyTwitterError as e:
+        LOG.error(f"Posting tweet failed with exception: {e.message}")
 
     LOG.info("Tweet:\n")
     LOG.info(resp)
     return resp
+
+def format_user_mentions(users):
+    mention_strs = ["@" + u for u in users]
+    return " ".join(mention_strs)
 
 """
 Break up tweet by lines, then split them into separate 280-char tweets
@@ -120,16 +127,17 @@ def main(args, stdin):
 
     notification_method = NotificationMethod.TWITTER
 
-    user = args[1]
+    users = args[1]
 
     if len(args) == 3:
         if args[2] == "--email":
             notification_method = NotificationMethod.EMAIL
-            if "@gmail.com" not in user:
+            if "@gmail.com" not in users:
                 raise RuntimeError("Email address must contain @gmail.com")
 
     if (notification_method == NotificationMethod.TWITTER):
-        user = args[1].replace("@", "")
+        users = args[1].replace("@", "")
+        users = users.split(",")
 
     first_line = next(stdin)
     first_line_hash = md5(first_line.encode("utf-8")).hexdigest()
@@ -148,18 +156,13 @@ def main(args, stdin):
         sys.exit(0)
 
     if "Something went wrong" in first_line:
-        _create_tweet("{}, I'm broken! Please help :'(".format(user), tc)
+        _create_tweet("{}, I'm broken! Please help :'(".format(format_user_mentions(users)), tc)
         sys.exit()
 
     availability = get_availability_data(stdin)
     available_site_strings = generate_availability_strings_concise(availability)
 
     last_availability = load_last_availability()
-
-    print("Last:")
-    print(last_availability)
-    print("current")
-    print(availability)
 
     persist_availability(availability)
 
@@ -168,7 +171,7 @@ def main(args, stdin):
         sys.exit(0)
 
     if available_site_strings:
-        notification_str = generate_tweet_str(available_site_strings, first_line, user)
+        notification_str = generate_tweet_str(available_site_strings, first_line, users)
 
         LOG.info("Notification (ignoring char limit): \n" + notification_str)
 
@@ -186,10 +189,11 @@ def main(args, stdin):
         sys.exit(1)
 
 
-def generate_tweet_str(available_site_strings, first_line, user):
-    tweet = "@{}! ".format(user)
+def generate_tweet_str(available_site_strings, first_line, users):
+    tweet = "{}! ".format(format_user_mentions(users))
     tweet += first_line.rstrip()
-    tweet += " 🏕🏕🏕\n"
+    # prevent duplicate tweets with random emoji count
+    tweet += " " + "🏕" * random.randint(3, 10) + "\n\n"
     tweet += "\n".join(available_site_strings)
     return tweet
 
@@ -230,7 +234,7 @@ def generate_availability_strings_concise(availability_data):
                 date2 = datetime.strptime(d2, DateFormat.INPUT_DATE_FORMAT.value).strftime("%-m/%-d")
                 site_str += f"{date1}-{date2}, "
             site_str = site_str[:-2]
-            strs.append(site_str)
+            strs.append(site_str + "\n")
         strs.append("\n")
     return strs
     
@@ -245,7 +249,6 @@ def get_availability_data(stdin):
     i = 0
     while i < len(inputs):
         line = inputs[i]
-        print("--- " + line + " ---")
         if Emoji.SUCCESS.value in line:
             line = line.strip()
             park_name_and_id = " ".join(line.split(":")[0].split(" ")[1:])
