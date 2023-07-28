@@ -45,6 +45,7 @@ class RecreationClient:
     @backoff.on_exception(backoff.expo,
                           RuntimeError,
                           max_tries=5,
+                          max_time=30,
                           jitter=None)
     def _send_request(cls, url, params):
         resp = requests.get(url, params=params, headers=cls.headers)

@@ -44,8 +44,12 @@ def _create_tweet(tweet, tc):
         access_secret=tc["access_token_secret"],
     )
 
+    # post multiple tweets in one thread
+    last_tweet_id = None
     for t in tweets:
-        _post_tweet(t, api)
+        resp = _post_tweet(t, api, last_tweet_id)
+        if resp:
+            last_tweet_id = resp.id
 
 def send_email(text_contents):
     gmail_username = environ["BOT_GMAIL_USERNAME"]
@@ -66,11 +70,18 @@ def send_email(text_contents):
 
     yag.close()
 
-def _post_tweet(tweet, api):
-    resp = api.create_tweet(text=tweet)
+def _post_tweet(tweet, api: Api, reply_tweet_id=None):
+    resp = None
+    if not reply_tweet_id:
+        resp = api.create_tweet(text=tweet)
+    else:
+        resp = api.create_tweet(text=tweet,
+                            reply_in_reply_to_tweet_id=reply_tweet_id,
+                            reply_exclude_reply_user_ids=[])
 
     LOG.info("Tweet:\n")
     LOG.info(resp)
+    return resp
 
 """
 Break up tweet by lines, then split them into separate 280-char tweets
@@ -172,7 +183,6 @@ def generate_tweet_str(available_site_strings, first_line, user):
     tweet += first_line.rstrip()
     tweet += " 🏕🏕🏕\n"
     tweet += "\n".join(available_site_strings)
-    tweet += "\nGo to recreation.gov/camping/campsites/<site#> to reserve."
     return tweet
 
 def generate_availability_strings(stdin):
@@ -206,7 +216,7 @@ def generate_availability_strings_concise(availability_data):
     for p, sites in availability_data.items():
         strs.append(f"{p}:")
         for s, date_ranges in sites.items():
-            site_str = f"- Site {s}: "
+            site_str = f"Site {s} (recreation.gov/camping/campsites/{s}):\n"
             for d1, d2 in date_ranges:
                 date1 = datetime.strptime(d1, DateFormat.INPUT_DATE_FORMAT.value).strftime("%-m/%-d")
                 date2 = datetime.strptime(d2, DateFormat.INPUT_DATE_FORMAT.value).strftime("%-m/%-d")
