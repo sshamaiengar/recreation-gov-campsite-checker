@@ -4,10 +4,11 @@ import random
 import sys
 import time
 from hashlib import md5
-from os import isatty, environ
+from os import isatty, environ, path
+import glob
 import logging
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timedelta
 from pytwitter import Api
 import backoff
 import yagmail
@@ -17,9 +18,11 @@ from enums.date_format import DateFormat
 
 MAX_TWEET_LENGTH = 279
 DELAY_FILE_TEMPLATE = "next_{}.txt"
-DELAY_TIME = 600
+DELAY_TIME = 120
 CREDENTIALS_FILE = "twitter_credentials.json"
-LAST_AVAILABILITY_FILE = "last_availability_data.txt"
+LAST_AVAILABILITY_FILE_PREFIX = "last_availability_data_"
+LAST_AVAILABILITY_FILE_SUFFIX = ".txt"
+LAST_AVAILABILITY_DATA_TTL = timedelta(hours=1)
 
 class NotificationMethod:
     TWITTER = 1
@@ -153,6 +156,11 @@ def main(args, stdin):
 
     last_availability = load_last_availability()
 
+    print("Last:")
+    print(last_availability)
+    print("current")
+    print(availability)
+
     persist_availability(availability)
 
     if not has_new_availability(availability, last_availability):
@@ -273,14 +281,51 @@ def get_availability_data(stdin):
         i += 1
     return availability_by_park
 
+def get_last_availability_file_name_and_time():
+    # find most recent availability file
+    availability_files = glob.glob(f"./{LAST_AVAILABILITY_FILE_PREFIX}*")
+    if not availability_files:
+        return None, None
+    last_availability_file = max(availability_files, key=path.getctime)
+
+    # get timestamp out of filename ./last_availability_data_<timestamp>.txt
+    last_availability_time_str = last_availability_file.split("/")[-1].split(".")[0].split("_")[3]
+    last_availability_time: datetime = datetime.now()
+    try:
+        last_availability_time = datetime.strptime(last_availability_time_str, "%Y%m%d-%H%M%S")
+    except:
+        LOG.warning(f"Unable to parse datetime from <{last_availability_time_str}>")
+
+    return last_availability_file, last_availability_time
+
 def persist_availability(availability_by_park):
     data = json.dumps(availability_by_park)
-    with open(LAST_AVAILABILITY_FILE, "w+") as f:
+
+    # look for a previous availability file within TTL
+    # If exists, update it (keeping same time)
+    last_availability_file, last_availability_time = get_last_availability_file_name_and_time()
+    last_availability_delta = datetime.now() - last_availability_time
+    availability_file_to_write = last_availability_file
+    if last_availability_delta > LAST_AVAILABILITY_DATA_TTL:
+        availability_file_to_write = LAST_AVAILABILITY_FILE_PREFIX + datetime.now().strftime("%Y%m%d-%H%M%S") + LAST_AVAILABILITY_FILE_SUFFIX
+    else:
+        LOG.info(f"Will update last availability data from {last_availability_delta.total_seconds() / 60} minutes ago")
+
+    with open(availability_file_to_write, "w+") as f:
         f.write(data)
 
 def load_last_availability():
     try:
-        with open(LAST_AVAILABILITY_FILE, "r") as f:
+        last_availability_file, last_availability_time = get_last_availability_file_name_and_time()
+
+        # if last availability data is past TTL, ignore it
+        last_availability_delta = datetime.now() - last_availability_time
+        if last_availability_delta > LAST_AVAILABILITY_DATA_TTL:
+            return {}
+        else:
+            LOG.info(f"Found last availability data from {last_availability_delta.total_seconds() / 60} minutes ago")
+
+        with open(last_availability_file, "r") as f:
             last_availability = json.loads(f.read())
             # need to convert lists to tuples to be hashable
             for p, sites in last_availability.items():
