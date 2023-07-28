@@ -69,8 +69,8 @@ def send_email(text_contents):
 def _post_tweet(tweet, api):
     resp = api.create_tweet(text=tweet)
 
-    LOG.info("The following was tweeted:\n")
-    LOG.info(tweet)
+    LOG.info("Tweet:\n")
+    LOG.info(resp)
 
 """
 Break up tweet by lines, then split them into separate 280-char tweets
@@ -271,7 +271,12 @@ def persist_availability(availability_by_park):
 def load_last_availability():
     try:
         with open(LAST_AVAILABILITY_FILE, "r") as f:
-            return json.loads(f.read())
+            last_availability = json.loads(f.read())
+            # need to convert lists to tuples to be hashable
+            for p, sites in last_availability.items():
+                for s, date_ranges in sites.items():
+                    sites[s] = tuple(tuple(r) for r in date_ranges)
+            return last_availability
     except FileNotFoundError:
         return {}
     
@@ -299,4 +304,6 @@ if __name__ == "__main__":
 """
 Usage:
 python3 camping.py --start-date 2023-07-21 --end-date 2023-09-30 --stdin < parks.txt --weekends-only --nights 2 --show-campsite-info | python3 notifier.py @sshamaiengar
+
+python3.9 recreation-gov-campsite-checker/camping.py --start-date 2023-07-21 --end-date 2023-09-30 --stdin < parks.txt --weekends-only --nights 2 --show-campsite-info | python3 recreation-gov-campsite-checker/notifier.py @sshamaiengar
 """
