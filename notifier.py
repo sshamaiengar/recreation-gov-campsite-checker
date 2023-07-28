@@ -298,5 +298,5 @@ if __name__ == "__main__":
 
 """
 Usage:
-python3 camping.py --start-date 2023-07-21 --end-date 2023-08-30 --stdin < parks.txt --weekends-only --nights 2 --show-campsite-info | python3 notifier.py @sshamaiengar
+python3 camping.py --start-date 2023-07-21 --end-date 2023-09-30 --stdin < parks.txt --weekends-only --nights 2 --show-campsite-info | python3 notifier.py @sshamaiengar
 """

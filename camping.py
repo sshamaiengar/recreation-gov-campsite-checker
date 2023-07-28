@@ -87,13 +87,20 @@ def get_park_information(
             # Filter out group, walk-in, and management sites, and other types that don't match requested
             if (
                 campsite_type
-                and (campsite_type != campsite_data["campsite_type"]
-                        or "group" in campsite_data["campsite_type"].lower()
-                        or "management" in campsite_data["campsite_type"].lower()
-                        or "walk" in campsite_data["campsite_type"].lower())
+                and (campsite_type != campsite_data["campsite_type"])
             ):
                 LOG.warning(f"Skipping site {campsite_id}, type is {campsite_data['campsite_type']}")
                 continue
+        
+            if (campsite_data["campsite_type"] and ("group" in campsite_data["campsite_type"].lower()
+                        or "management" in campsite_data["campsite_type"].lower()
+                        or "walk" in campsite_data["campsite_type"].lower()
+                        or "hike" in campsite_data["campsite_type"].lower())):
+                LOG.warning(f"Skipping site {campsite_id}, type is {campsite_data['campsite_type']}")
+                continue
+            
+            if (campsite_id == "79131"):
+                LOG.info("walk in site")
 
             available = []
             a = data.setdefault(campsite_id, [])
