@@ -22,7 +22,7 @@ DELAY_TIME = 120
 CREDENTIALS_FILE = "twitter_credentials.json"
 LAST_AVAILABILITY_FILE_PREFIX = "last_availability_data_"
 LAST_AVAILABILITY_FILE_SUFFIX = ".txt"
-LAST_AVAILABILITY_DATA_TTL = timedelta(minutes=1)
+LAST_AVAILABILITY_DATA_TTL = timedelta(hours=12)
 
 class NotificationMethod:
     TWITTER = 1
