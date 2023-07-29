@@ -4,7 +4,7 @@ import random
 import sys
 import time
 from hashlib import md5
-from os import isatty, environ, path, makedirs
+from os import isatty, environ, path, makedirs, remove
 import glob
 import logging
 from enum import Enum
@@ -162,11 +162,12 @@ def main(args, stdin):
         time.time()
     ):
         LOG.warning("It is too soon to notify again")
-        sys.exit(0)
+        cleanup_files(older_than=timedelta(mins=10))
+        exit(0)
 
     if "Something went wrong" in first_line:
         _create_tweet("{}, I'm broken! Please help :'(".format(format_user_mentions(users)), tc)
-        sys.exit()
+        exit()
 
     availability = get_availability_data(stdin)
     available_site_strings = generate_availability_strings_concise(availability)
@@ -177,7 +178,7 @@ def main(args, stdin):
 
     if not has_new_availability(availability, last_availability):
         LOG.warning("No new campsites available, not notifying 😞")
-        sys.exit(0)
+        exit(0)
 
     if available_site_strings:
         notification_str = generate_tweet_str(available_site_strings, first_line, users)
@@ -192,11 +193,14 @@ def main(args, stdin):
         with open(delay_file, "w") as f:
             f.write(str(int(time.time())))
 
-        sys.exit(0)
+        exit(0)
     else:
         LOG.warning("No campsites available, not notifying 😞")
-        sys.exit(1)
+        exit(1)
 
+def exit(exit_code=0):
+    cleanup_files()
+    sys.exit(exit_code)
 
 def generate_tweet_str(available_site_strings, first_line, users):
     tweet = "{}! ".format(format_user_mentions(users))
@@ -369,9 +373,19 @@ def has_new_availability(new_data, old_data):
     LOG.debug("No new availability")
     return False
 
-def cleanup_files():
-    pass
+def cleanup_files(older_than=timedelta(hours=24)):
+    # Cleanup old last availability and next call files
+    # Cleanup old log files
+    files_to_clean = []
+    files_to_clean += glob.glob(f"./{LAST_AVAILABILITY_FILE_PREFIX}*")
+    files_to_clean += glob.glob(f"./next_*.txt")
+    files_to_clean += glob.glob(f"{path.expanduser('~')}/recreation-gov-bot/log/*.log")
             
+    for f in files_to_clean:
+        time_created = datetime.fromtimestamp(path.getctime(f))
+        if datetime.now() - time_created > older_than:
+            LOG.info(f"Cleaning up old file {f}")
+            remove(f)
 
 if __name__ == "__main__":
     LOG.setLevel(logging.DEBUG)
