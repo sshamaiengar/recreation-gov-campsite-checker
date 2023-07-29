@@ -288,7 +288,7 @@ def get_last_availability_file_name_and_time():
     # find most recent availability file
     availability_files = glob.glob(f"./{LAST_AVAILABILITY_FILE_PREFIX}*")
     if not availability_files:
-        return None, None
+        return None, datetime.min
     last_availability_file = max(availability_files, key=path.getctime)
 
     # get timestamp out of filename ./last_availability_data_<timestamp>.txt
