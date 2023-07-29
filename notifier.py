@@ -165,7 +165,6 @@ def main(args, stdin):
         time.time()
     ):
         LOG.warning("It is too soon to notify again")
-        cleanup_files(older_than=timedelta(mins=10))
         exit(0)
 
     if "Something went wrong" in first_line:
