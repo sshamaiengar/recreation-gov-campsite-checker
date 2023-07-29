@@ -10,3 +10,5 @@ __pycache__
 .vscode/*
 last_availability_data*
 last_notification.txt
+*.sh
+get-pip.py
