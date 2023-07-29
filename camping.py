@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 
+import os, os.path
 import json
 import logging
 import sys
@@ -17,15 +18,27 @@ from enums.emoji import Emoji
 from utils import formatter
 from utils.camping_argparser import CampingArgumentParser
 
+
 EXCLUDED_DATES_FILE = "excluded_dates.txt"
+LOG_PATH = f"{os.path.expanduser('~')}/recreation-gov-bot/log/"
+# create log dir if missing
+if not os.path.exists(LOG_PATH):
+    os.makedirs(LOG_PATH)
+    
+LOG_FILE_TEMPLATE = "bot_camping_{}.log"
 
 LOG = logging.getLogger(__name__)
+LOG.setLevel(logging.DEBUG)
 log_formatter = logging.Formatter(
     "%(asctime)s - %(process)s - %(levelname)s - %(message)s"
 )
-sh = logging.StreamHandler()
-sh.setFormatter(log_formatter)
-LOG.addHandler(sh)
+streamHandler = logging.StreamHandler()
+streamHandler.setFormatter(log_formatter)
+LOG.addHandler(streamHandler)
+
+fileHandler = logging.FileHandler(LOG_PATH + LOG_FILE_TEMPLATE.format(datetime.utcnow().strftime(DateFormat.FILENAME_DATE_FORMAT.value)))
+fileHandler.setFormatter(log_formatter)
+LOG.addHandler(fileHandler)
 
 
 def get_park_information(
@@ -52,6 +65,8 @@ def get_park_information(
     Notably, the output doesn't tell you which sites are available. The rest of
     the script doesn't need to know this to determine whether sites are available.
     """
+
+    LOG.info(f"Getting info for park {park_id}...")
 
     # Get each first of the month for months in the range we care about.
     start_of_month = datetime(start_date.year, start_date.month, 1)
@@ -238,11 +253,11 @@ def check_park(
     park_information = get_park_information(
         park_id, start_date, end_date, campsite_type, campsite_ids, excluded_site_ids=excluded_site_ids,
     )
-    LOG.debug(
-        "Information for park {}: {}".format(
-            park_id, json.dumps(park_information, indent=2)
-        )
-    )
+    # LOG.debug(
+    #     "Information for park {}: {}".format(
+    #         park_id, json.dumps(park_information, indent=2)
+    #     )
+    # )
     park_name = RecreationClient.get_park_name(park_id)
     current, maximum, availabilities_filtered = get_num_available_sites(
         park_information, start_date, end_date, nights=nights, weekends_only=weekends_only,
@@ -375,6 +390,7 @@ def main(parks, json_output=False):
             validated_end_date,
             args.show_campsite_info,
         )
+    LOG.info(output)
     print(output)
     return has_availabilities
 
@@ -384,12 +400,12 @@ if __name__ == "__main__":
     parser = CampingArgumentParser()
     args = parser.parse_args()
 
-    if args.debug:
-        LOG.setLevel(logging.DEBUG)
+    # if args.debug:
+    #     LOG.setLevel(logging.DEBUG)
 
     main(args.parks, json_output=args.json_output)
     end = time.perf_counter()
-    print(f"Found campsites in {end-start}s")
+    LOG.info(f"Found campsites in {end-start}s")
 
 """
 Usage:

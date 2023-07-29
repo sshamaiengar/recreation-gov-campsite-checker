@@ -4,7 +4,7 @@ import random
 import sys
 import time
 from hashlib import md5
-from os import isatty, environ, path
+from os import isatty, environ, path, makedirs
 import glob
 import logging
 from enum import Enum
@@ -23,6 +23,11 @@ CREDENTIALS_FILE = "twitter_credentials.json"
 LAST_AVAILABILITY_FILE_PREFIX = "last_availability_data_"
 LAST_AVAILABILITY_FILE_SUFFIX = ".txt"
 LAST_AVAILABILITY_DATA_TTL = timedelta(hours=12)
+LOG_PATH = f"{path.expanduser('~')}/recreation-gov-bot/log/"
+# create log dir if missing
+if not path.exists(LOG_PATH):
+    makedirs(LOG_PATH)
+LOG_FILE_TEMPLATE = "bot_notifier_{}.log"
 
 class NotificationMethod:
     TWITTER = 1
@@ -32,9 +37,13 @@ LOG = logging.getLogger(__name__)
 log_formatter = logging.Formatter(
     "%(asctime)s - %(process)s - %(levelname)s - %(message)s"
 )
-sh = logging.StreamHandler()
-sh.setFormatter(log_formatter)
-LOG.addHandler(sh)
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(log_formatter)
+LOG.addHandler(stream_handler)
+
+file_handler = logging.FileHandler(LOG_PATH + LOG_FILE_TEMPLATE.format(datetime.utcnow().strftime(DateFormat.FILENAME_DATE_FORMAT.value)))
+file_handler.setFormatter(log_formatter)
+LOG.addHandler(file_handler)
 
 
 def _create_tweet(tweet, tc):
@@ -293,7 +302,7 @@ def get_last_availability_file_name_and_time():
 
     # get timestamp out of filename ./last_availability_data_<timestamp>.txt
     last_availability_time_str = last_availability_file.split("/")[-1].split(".")[0].split("_")[3]
-    last_availability_time: datetime = datetime.now()
+    last_availability_time: datetime = datetime.utcnow()
     try:
         last_availability_time = datetime.strptime(last_availability_time_str, "%Y%m%d-%H%M%S")
     except:
@@ -307,10 +316,10 @@ def persist_availability(availability_by_park):
     # look for a previous availability file within TTL
     # If exists, update it (keeping same time)
     last_availability_file, last_availability_time = get_last_availability_file_name_and_time()
-    last_availability_delta = datetime.now() - last_availability_time
+    last_availability_delta = datetime.utcnow() - last_availability_time
     availability_file_to_write = last_availability_file
     if last_availability_delta > LAST_AVAILABILITY_DATA_TTL:
-        availability_file_to_write = LAST_AVAILABILITY_FILE_PREFIX + datetime.now().strftime("%Y%m%d-%H%M%S") + LAST_AVAILABILITY_FILE_SUFFIX
+        availability_file_to_write = LAST_AVAILABILITY_FILE_PREFIX + datetime.utcnow().strftime("%Y%m%d-%H%M%S") + LAST_AVAILABILITY_FILE_SUFFIX
     else:
         LOG.info(f"Will update last availability data from {last_availability_delta.total_seconds() / 60} minutes ago")
 
@@ -322,7 +331,7 @@ def load_last_availability():
         last_availability_file, last_availability_time = get_last_availability_file_name_and_time()
 
         # if last availability data is past TTL, ignore it
-        last_availability_delta = datetime.now() - last_availability_time
+        last_availability_delta = datetime.utcnow() - last_availability_time
         if last_availability_delta > LAST_AVAILABILITY_DATA_TTL:
             return {}
         else:
@@ -340,19 +349,28 @@ def load_last_availability():
     
 # Compare availabiltiy by park->site->dates to see if any new availability has come up
 def has_new_availability(new_data, old_data):
+    LOG.debug("New availability:\n" + str(new_data))
+    LOG.debug("Old availability:\n" + str(old_data))
     for p, sites in new_data.items():
         if p not in old_data:
+            LOG.debug(f"New availability due to new park {p}")
             return True
         for s, date_ranges in sites.items():
             # if new has any new sites for a park
             if s not in old_data[p]:
+                LOG.debug(f"New availability due to new site {s}")
                 return True
             new_dates = set(date_ranges)
             old_dates = set(old_data[p][s])
             # if new has any new dates for a site
             if len(new_dates - old_dates) > 0:
+                LOG.debug(f"New availability due to new dates in site {s}")
                 return True
+    LOG.debug("No new availability")
     return False
+
+def cleanup_files():
+    pass
             
 
 if __name__ == "__main__":
