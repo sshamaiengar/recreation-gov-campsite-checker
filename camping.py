@@ -18,9 +18,11 @@ from enums.emoji import Emoji
 from utils import formatter
 from utils.camping_argparser import CampingArgumentParser
 
+script_path_list = os.path.normpath(__file__).split(os.sep)
+HOME_DIR = os.path.join("/", script_path_list[1], script_path_list[2])
 
 EXCLUDED_DATES_FILE = "excluded_dates.txt"
-LOG_PATH = f"{os.path.expanduser('~')}/recreation-gov-bot/log/"
+LOG_PATH = f"{HOME_DIR}/recreation-gov-bot/log/"
 # create log dir if missing
 if not os.path.exists(LOG_PATH):
     os.makedirs(LOG_PATH)
@@ -39,7 +41,6 @@ LOG.addHandler(streamHandler)
 fileHandler = logging.FileHandler(LOG_PATH + LOG_FILE_TEMPLATE.format(datetime.utcnow().strftime(DateFormat.FILENAME_DATE_FORMAT.value)))
 fileHandler.setFormatter(log_formatter)
 LOG.addHandler(fileHandler)
-
 
 def get_park_information(
     park_id, start_date, end_date, campsite_type=None, campsite_ids=(), excluded_site_ids=[]

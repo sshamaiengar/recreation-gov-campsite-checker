@@ -4,7 +4,7 @@ import random
 import sys
 import time
 from hashlib import md5
-from os import isatty, environ, path, makedirs, remove
+from os import isatty, environ, path, makedirs, remove, sep
 import glob
 import logging
 from enum import Enum
@@ -16,6 +16,9 @@ import yagmail
 from enums.emoji import Emoji
 from enums.date_format import DateFormat
 
+script_path_list = path.normpath(__file__).split(sep)
+HOME_DIR = path.join("/", script_path_list[1], script_path_list[2])
+
 MAX_TWEET_LENGTH = 279
 DELAY_FILE_TEMPLATE = "next_{}.txt"
 DELAY_TIME = 120
@@ -23,7 +26,7 @@ CREDENTIALS_FILE = "twitter_credentials.json"
 LAST_AVAILABILITY_FILE_PREFIX = "last_availability_data_"
 LAST_AVAILABILITY_FILE_SUFFIX = ".txt"
 LAST_AVAILABILITY_DATA_TTL = timedelta(hours=12)
-LOG_PATH = f"{path.expanduser('~')}/recreation-gov-bot/log/"
+LOG_PATH = f"{HOME_DIR}/recreation-gov-bot/log/"
 # create log dir if missing
 if not path.exists(LOG_PATH):
     makedirs(LOG_PATH)
@@ -379,7 +382,7 @@ def cleanup_files(older_than=timedelta(hours=24)):
     files_to_clean = []
     files_to_clean += glob.glob(f"./{LAST_AVAILABILITY_FILE_PREFIX}*")
     files_to_clean += glob.glob(f"./next_*.txt")
-    files_to_clean += glob.glob(f"{path.expanduser('~')}/recreation-gov-bot/log/*.log")
+    files_to_clean += glob.glob(f"{HOME_DIR}/recreation-gov-bot/log/*.log")
             
     for f in files_to_clean:
         time_created = datetime.fromtimestamp(path.getctime(f))
